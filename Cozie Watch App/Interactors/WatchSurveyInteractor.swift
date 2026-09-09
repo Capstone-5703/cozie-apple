@@ -67,6 +67,7 @@ final class WatchSurveyInteractor {
                                       WatchSurveyKeys.wssTitle.rawValue: watchSurvey?.surveyName ?? "",
                                       WatchSurveyKeys.appVersion.rawValue: appVersion]
         
+        fields[WatchSurveyKeys.timeZone.rawValue] = TimeZone.current.identifier
         for selected in selectedOptions {
             if selected.sID.isEmpty {
                 continue
@@ -169,7 +170,8 @@ final class WatchSurveyInteractor {
         
         let fields = [WatchSurveyKeys.actionButtonKey.rawValue: action,
                      WatchSurveyKeys.transmitTrigger.rawValue: WatchSurveyKeys.transmitTriggerPushValue.rawValue,
-                     WatchSurveyKeys.appVersion.rawValue: appVersion]
+                     WatchSurveyKeys.appVersion.rawValue: appVersion,
+                      WatchSurveyKeys.timeZone.rawValue: TimeZone.current.identifier]
         
         let response: [String : Any] = [WatchSurveyKeys.postTime.rawValue: formattedDate(),
                                         WatchSurveyKeys.measurement.rawValue: storage.experimentID(),
