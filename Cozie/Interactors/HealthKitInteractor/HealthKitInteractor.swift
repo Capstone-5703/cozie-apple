@@ -522,10 +522,23 @@ final class HealthKitInteractor: HealthKitInteractorProtocol {
     }
     
     private func addPrefixForDataKey(key: String, device: HKDevice? = nil) -> String {
-        if let name = device?.model {
-            return dataPrefix + key + (name.lowercased().contains("phone") ? HeathDataKeys.phone.rawValue : HeathDataKeys.watch.rawValue)
+        guard let device = device, let model = device.model else {
+            return dataPrefix + key
         }
-        return dataPrefix + key
+
+        if model.lowercased().contains("phone") {
+            return dataPrefix + key + HeathDataKeys.phone.rawValue
+        }
+
+        // Distinguish between multiple non-phone sources (e.g. two Apple Watches of
+        // the same model, or an Apple Watch alongside a Fitbit/Oura), instead of
+        // merging them all under one shared "_watch" suffix.
+        let manufacturer = (device.manufacturer ?? "").replacingOccurrences(of: " ", with: "")
+        let deviceModel = model.replacingOccurrences(of: " ", with: "")
+        let uniquePart = device.localIdentifier?.prefix(6) ?? ""
+        let suffix = "_\(manufacturer)_\(deviceModel)_\(uniquePart)".lowercased()
+
+        return dataPrefix + key + suffix
     }
     
     private func convertToUnit(sample: HKQuantitySample, type: HKSampleType, completion: @escaping (Double?) -> Void) {
