@@ -521,7 +521,7 @@ final class HealthKitInteractor: HealthKitInteractorProtocol {
         }
     }
     
-    private func addPrefixForDataKey(key: String, device: HKDevice? = nil) -> String {
+    static func addPrefixForDataKey(key: String, device: HKDevice?, dataPrefix: String) -> String {
         guard let device = device, let model = device.model else {
             return dataPrefix + key
         }
@@ -539,6 +539,10 @@ final class HealthKitInteractor: HealthKitInteractorProtocol {
         let suffix = "_\(manufacturer)_\(deviceModel)_\(uniquePart)".lowercased()
 
         return dataPrefix + key + suffix
+    }
+
+    private func addPrefixForDataKey(key: String, device: HKDevice? = nil) -> String {
+        Self.addPrefixForDataKey(key: key, device: device, dataPrefix: dataPrefix)
     }
     
     private func convertToUnit(sample: HKQuantitySample, type: HKSampleType, completion: @escaping (Double?) -> Void) {
