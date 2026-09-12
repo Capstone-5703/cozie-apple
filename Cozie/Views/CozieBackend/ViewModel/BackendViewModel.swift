@@ -286,7 +286,7 @@ class BackendViewModel: NSObject, ObservableObject {
                             
                             let json = try JSONEncoder().encode(survey)
                             
-                            self.comManager.sendAll(data: json, writeApiURL: backend.api_write_url ?? "", writeApiKey: backend.api_write_key ?? "", userID: user.participantID ?? "", expID: user.experimentID ?? "", password: user.passwordID ?? "", userOneSignalID: backend.one_signal_id ?? "", timeInterval: Int(settings.wss_time_out), healthCutoffTimeInterval: storage.maxHealthCutoffTimeInterval(), completion: nil)
+                            self.comManager.sendAll(data: json, writeApiURL: backend.api_write_url ?? "", writeApiKey: backend.api_write_key ?? "", userID: user.participantID ?? "", expID: user.experimentID ?? "", password: user.passwordID ?? "", userOneSignalID: storage.playerID(), timeInterval: Int(settings.wss_time_out), healthCutoffTimeInterval: storage.maxHealthCutoffTimeInterval(), completion: nil)
                         }
                         
                     } catch let error {

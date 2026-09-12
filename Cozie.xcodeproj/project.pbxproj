@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A10400000000000000000001 /* SettingsSynchronizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10400000000000000000002 /* SettingsSynchronizationTests.swift */; };
 		410F9F24609171DBA9C76493 /* Pods_Cozie.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1684B5F544F1C4F61CEB3474 /* Pods_Cozie.framework */; };
 		5A3B1674EE88726D3A70656B /* Pods_Cozie_Watch_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21102A014A9965ACB8F62D4A /* Pods_Cozie_Watch_App.framework */; };
 		6AA6E556E22A71C96B09ED9C /* Pods_OneSignalNotificationServiceExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E183B343CF71E4B7667B905D /* Pods_OneSignalNotificationServiceExtension.framework */; };
@@ -232,6 +233,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A10400000000000000000002 /* SettingsSynchronizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsSynchronizationTests.swift; sourceTree = "<group>"; };
 		0D5CA005FB257C75385D1CF1 /* Pods-CozieTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CozieTests.release.xcconfig"; path = "Target Support Files/Pods-CozieTests/Pods-CozieTests.release.xcconfig"; sourceTree = "<group>"; };
 		113BFEB7973276FBE0602531 /* Pods-Cozie Watch App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Cozie Watch App.debug.xcconfig"; path = "Target Support Files/Pods-Cozie Watch App/Pods-Cozie Watch App.debug.xcconfig"; sourceTree = "<group>"; };
 		1684B5F544F1C4F61CEB3474 /* Pods_Cozie.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Cozie.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -1027,6 +1029,7 @@
 			isa = PBXGroup;
 			children = (
 				CA81604D2CC2593300BCBE25 /* WatchSurveyModelControllerTest.swift */,
+				A10400000000000000000002 /* SettingsSynchronizationTests.swift */,
 			);
 			path = WatchSurveyModelController;
 			sourceTree = "<group>";
@@ -1670,6 +1673,7 @@
 				CA9511D22D3658A000BA4283 /* HomeCoordinatorTests.swift in Sources */,
 				CA9511D92D366F1200BA4283 /* CozieStorageMock.swift in Sources */,
 				CA81604E2CC2593300BCBE25 /* WatchSurveyModelControllerTest.swift in Sources */,
+				A10400000000000000000001 /* SettingsSynchronizationTests.swift in Sources */,
 				CAB063072CC7A4AD004D94CA /* PushNotificationControllerTest.swift in Sources */,
 				CAC5D4EE2D3A6887006EF85B /* SettingsInteractorTests.swift in Sources */,
 				CA8160512CC262F200BCBE25 /* PersistenceControllerTest.swift in Sources */,

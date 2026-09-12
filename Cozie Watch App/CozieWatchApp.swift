@@ -11,6 +11,7 @@ import UserNotifications
 
 @main
 struct CozieWatchApp: App {
+    private let surveyViewModel = WatchSurveyViewModel.shared
     static let notificationCategory = "cozie_notification_category"
     private(set) var pushNotificationController: PushNotificationControllerProtocol = PushNotificationController(pushNotificationLogger: PushNotificationLoggerController(repository: PushNotificationLoggerRepository(apiRepository: BaseRepository(), api: StorageManager.shared)), userData: StorageManager.shared, storage: StorageManager.shared)
     
@@ -20,8 +21,9 @@ struct CozieWatchApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(viewModel: surveyViewModel)
                 .onAppear {
+                    surveyViewModel.prepareForDisplay()
                     addNotificationCategory()
                     prepareHealthInteractor()
                 }

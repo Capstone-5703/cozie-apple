@@ -10,6 +10,7 @@ import Foundation
 @testable import Cozie
 
 final class DataBaseStorageMock: DataBaseStorageProtocol {
+    var updateSurveyError: Error?
     var saveViewContextCalledCount = 0
     var removeExternalSurveyCalledCount = 0
     var settingsDataSpy: SettingsData? = SettingsDataSpy()
@@ -35,7 +36,7 @@ final class DataBaseStorageMock: DataBaseStorageProtocol {
     }
     
     func updateStorageWithSurvey(_ surveyModel: Cozie.WatchSurveyModelController, selected: Bool) async throws {
-        //
+        if let updateSurveyError { throw updateSurveyError }
     }
     
     func removeExternalSurvey() async throws {
