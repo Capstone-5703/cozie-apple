@@ -19,7 +19,7 @@ final class HealthKitInteractor: HealthKitInteractorProtocol {
         case workout, sleep, apnea
     }
     
-    typealias HealthValue = (type: HealthValueType, key: String, startDate: Date, value: Double)
+    typealias HealthValue = (type: HealthValueType, key: String, startDate: Date, value: Double, device: HKDevice?)
     
     enum HeathDataKeys: String {
         case heartRateKey = "_heart_rate"
@@ -240,8 +240,8 @@ final class HealthKitInteractor: HealthKitInteractorProtocol {
                 }
                 var apneaSamples: [HealthValue] = []
                 apneaEventSamples.forEach { sample in
-                    apneaSamples.append((.apnea, HeathDataKeys.apneaEvent.rawValue, sample.startDate, sample.startDate.distance(to: sample.endDate)/60))
-                }
+                    apneaSamples.append((.apnea, HeathDataKeys.apneaEvent.rawValue, sample.startDate, sample.startDate.distance(to: sample.endDate)/60, sample.device))
+                    }
                 
                 completion([], apneaSamples, nil)
                 return
@@ -263,7 +263,7 @@ final class HealthKitInteractor: HealthKitInteractorProtocol {
                             lastSyncInterval = lastInterval
                         }
                         if lastInterval > lastSync {
-                            sleepData.append((.sleep, sleepKey, sleepSample.startDate, sleepSample.startDate.distance(to: sleepSample.endDate)/60))
+                            sleepData.append((.sleep, sleepKey, sleepSample.startDate, sleepSample.startDate.distance(to: sleepSample.endDate)/60, sleepSample.device))
                         }
                     }
                 }
@@ -283,8 +283,8 @@ final class HealthKitInteractor: HealthKitInteractorProtocol {
                             lastSyncInterval = lastInterval
                         }
                         if lastInterval > lastSync {
-                            workoutData.append((.workout, HeathDataKeys.workoutType.rawValue, sampleWorkout.startDate, Double(sampleWorkout.workoutActivityType.rawValue)))
-                            workoutData.append((.workout, HeathDataKeys.workoutDuration.rawValue, sampleWorkout.startDate, sampleWorkout.duration))
+                            workoutData.append((.workout, HeathDataKeys.workoutType.rawValue, sampleWorkout.startDate, Double(sampleWorkout.workoutActivityType.rawValue), sampleWorkout.device))
+                            workoutData.append((.workout, HeathDataKeys.workoutDuration.rawValue, sampleWorkout.startDate, sampleWorkout.duration, sampleWorkout.device))
                         }
                     }
                 }
@@ -394,23 +394,23 @@ final class HealthKitInteractor: HealthKitInteractorProtocol {
                     healthData.forEach { sample in
                         let customTrigger = self.addPrefixForDataKey(key: HeathDataKeys.apneaEventTrigger.rawValue)
                         
-                        healthModels.append(HealthModel(time: self.healthDateFormatter.string(from: sample.startDate), measurement: user.experimentID, tags: tag, fields: HealthFields(transmitTrigger: customTrigger, healthKey: self.addPrefixForDataKey(key: sample.key), healthValue: sample.value)))
+                        healthModels.append(HealthModel(time: self.healthDateFormatter.string(from: sample.startDate), measurement: user.experimentID, tags: tag, fields: HealthFields(transmitTrigger: customTrigger, healthKey: self.addPrefixForDataKey(key: sample.key, device: sample.device), healthValue: sample.value)))
                     }
                     completion(healthModels, samples)
                     
                     // With units (steps, hr...)
                 } else if healthData.first?.type == .workout {
-                    healthData.forEach { (type, workoutKey, startDate, value) in
+                    healthData.forEach { (type, workoutKey, startDate, value, device) in
                         if workoutKey == HeathDataKeys.workoutType.rawValue {
-                            healthModels.append(HealthModel(time: self.healthDateFormatter.string(from: startDate), measurement: user.experimentID, tags: tag, fields: HealthFields(transmitTrigger: trigger, healthKey: self.addPrefixForDataKey(key: workoutKey), healthValue: value, healthStringValue: HKWorkoutActivityType(rawValue: UInt(value))?.name ?? "")))
+                            healthModels.append(HealthModel(time: self.healthDateFormatter.string(from: startDate), measurement: user.experimentID, tags: tag, fields: HealthFields(transmitTrigger: trigger, healthKey: self.addPrefixForDataKey(key: workoutKey, device: device), healthValue: value, healthStringValue: HKWorkoutActivityType(rawValue: UInt(value))?.name ?? "")))
                         } else {
-                            healthModels.append(HealthModel(time: self.healthDateFormatter.string(from: startDate), measurement: user.experimentID, tags: tag, fields: HealthFields(transmitTrigger: trigger, healthKey: self.addPrefixForDataKey(key: workoutKey), healthValue: value)))
+                            healthModels.append(HealthModel(time: self.healthDateFormatter.string(from: startDate), measurement: user.experimentID, tags: tag, fields: HealthFields(transmitTrigger: trigger, healthKey: self.addPrefixForDataKey(key: workoutKey, device: device), healthValue: value)))
                         }
                     }
                     completion(healthModels, samples)
                 } else if healthData.first?.type == .sleep {
-                    healthData.forEach { (type, sleepKey, startDate, value) in
-                        healthModels.append(HealthModel(time: self.healthDateFormatter.string(from: startDate), measurement: user.experimentID, tags: tag, fields: HealthFields(transmitTrigger: trigger, healthKey: self.addPrefixForDataKey(key: sleepKey), healthValue: value)))
+                    healthData.forEach { (type, sleepKey, startDate, value, device) in
+                        healthModels.append(HealthModel(time: self.healthDateFormatter.string(from: startDate), measurement: user.experimentID, tags: tag, fields: HealthFields(transmitTrigger: trigger, healthKey: self.addPrefixForDataKey(key: sleepKey, device: device), healthValue: value)))
                     }
                     completion(healthModels, samples)
                 }
