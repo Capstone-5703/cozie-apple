@@ -82,7 +82,8 @@ struct CozieApp: App {
     
     var body: some Scene {
         WindowGroup {
-            HomeCoordinatorView(coordinator: coordinator, appDelegate: appDelegate)
+//            HomeCoordinatorView(coordinator: coordinator, appDelegate: appDelegate)
+            PauseFeatureTestView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
                 .onChange(of: scenePhase) { newPhase in
                     

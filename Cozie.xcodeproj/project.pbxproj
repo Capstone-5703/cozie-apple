@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		12249D5E30531C6F00B7D2DB /* PauseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12249D5D30531B2300B7D2DB /* PauseManager.swift */; };
+		12249D6030531D6800B7D2DB /* PauseFeatureTestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12249D5F30531D6500B7D2DB /* PauseFeatureTestView.swift */; };
 		410F9F24609171DBA9C76493 /* Pods_Cozie.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1684B5F544F1C4F61CEB3474 /* Pods_Cozie.framework */; };
 		5A3B1674EE88726D3A70656B /* Pods_Cozie_Watch_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 21102A014A9965ACB8F62D4A /* Pods_Cozie_Watch_App.framework */; };
 		6AA6E556E22A71C96B09ED9C /* Pods_OneSignalNotificationServiceExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E183B343CF71E4B7667B905D /* Pods_OneSignalNotificationServiceExtension.framework */; };
@@ -234,6 +236,8 @@
 /* Begin PBXFileReference section */
 		0D5CA005FB257C75385D1CF1 /* Pods-CozieTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-CozieTests.release.xcconfig"; path = "Target Support Files/Pods-CozieTests/Pods-CozieTests.release.xcconfig"; sourceTree = "<group>"; };
 		113BFEB7973276FBE0602531 /* Pods-Cozie Watch App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Cozie Watch App.debug.xcconfig"; path = "Target Support Files/Pods-Cozie Watch App/Pods-Cozie Watch App.debug.xcconfig"; sourceTree = "<group>"; };
+		12249D5D30531B2300B7D2DB /* PauseManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseManager.swift; sourceTree = "<group>"; };
+		12249D5F30531D6500B7D2DB /* PauseFeatureTestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseFeatureTestView.swift; sourceTree = "<group>"; };
 		1684B5F544F1C4F61CEB3474 /* Pods_Cozie.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Cozie.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B7A34F99C19A755D1793F9B /* Pods_CozieTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_CozieTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		21102A014A9965ACB8F62D4A /* Pods_Cozie_Watch_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Cozie_Watch_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -435,6 +439,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		12249D5C30531AF500B7D2DB /* PauseSandbox */ = {
+			isa = PBXGroup;
+			children = (
+				12249D5F30531D6500B7D2DB /* PauseFeatureTestView.swift */,
+				12249D5D30531B2300B7D2DB /* PauseManager.swift */,
+			);
+			path = PauseSandbox;
+			sourceTree = "<group>";
+		};
 		428AB4AF32555B272CBCC37A /* Pods */ = {
 			isa = PBXGroup;
 			children = (
@@ -471,6 +484,7 @@
 		921289C1299649EC0060C729 = {
 			isa = PBXGroup;
 			children = (
+				12249D5C30531AF500B7D2DB /* PauseSandbox */,
 				921289CC299649EC0060C729 /* Cozie */,
 				921289E2299649ED0060C729 /* CozieTests */,
 				921289EC299649ED0060C729 /* CozieUITests */,
@@ -1353,8 +1367,6 @@
 				en,
 			);
 			mainGroup = 921289C1299649EC0060C729;
-			packageReferences = (
-			);
 			productRefGroup = 921289CB299649EC0060C729 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -1616,6 +1628,7 @@
 				9251772229C376E40089C92C /* SettingViewModel.swift in Sources */,
 				9212144B29D1EEBE002BAEB4 /* Session.swift in Sources */,
 				9244815D29C0CF63004E6779 /* AppLinks.swift in Sources */,
+				12249D6030531D6800B7D2DB /* PauseFeatureTestView.swift in Sources */,
 				92128A04299687410060C729 /* CozieDataListView.swift in Sources */,
 				92F7D16929C4E62000B31433 /* DaysListView.swift in Sources */,
 				CA2EE84E29E8679B00590527 /* HealthKitInteractor.swift in Sources */,
@@ -1640,6 +1653,7 @@
 				CA8BE5682A53FF0E00D0627D /* LoggerProtocol.swift in Sources */,
 				CAD1E5CA29FBEF17000F9FE7 /* HealthDataModel.swift in Sources */,
 				CA2EE85529ED6E1600590527 /* WaychSurveyData.swift in Sources */,
+				12249D5E30531C6F00B7D2DB /* PauseManager.swift in Sources */,
 				92D0B81229D9BFA9008557FC /* SettingCoordinatorView.swift in Sources */,
 				92210746299906F1001EC552 /* HomeCoordinator.swift in Sources */,
 				9267EFEC299A6FCA0025A3CE /* DataTitleImageRow.swift in Sources */,
@@ -2097,7 +2111,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
 		};
@@ -2139,7 +2153,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 9.0;
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
 		};
