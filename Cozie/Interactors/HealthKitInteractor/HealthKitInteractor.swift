@@ -533,12 +533,15 @@ final class HealthKitInteractor: HealthKitInteractorProtocol {
         // Distinguish between multiple non-phone sources (e.g. two Apple Watches of
         // the same model, or an Apple Watch alongside a Fitbit/Oura), instead of
         // merging them all under one shared "_watch" suffix.
-        let manufacturer = (device.manufacturer ?? "").replacingOccurrences(of: " ", with: "")
-        let deviceModel = model.replacingOccurrences(of: " ", with: "")
-        let uniquePart = device.localIdentifier?.prefix(6) ?? ""
+        let manufacturer = sanitizeForFieldName(device.manufacturer ?? "")
+        let deviceModel = sanitizeForFieldName(model)
+        let uniquePart = sanitizeForFieldName(String(device.localIdentifier?.prefix(6) ?? ""))
         let suffix = "_\(manufacturer)_\(deviceModel)_\(uniquePart)".lowercased()
 
         return dataPrefix + key + suffix
+    }
+    private static func sanitizeForFieldName(_ raw: String) -> String {
+        raw.filter { $0.isLetter || $0.isNumber }
     }
 
     private func addPrefixForDataKey(key: String, device: HKDevice? = nil) -> String {

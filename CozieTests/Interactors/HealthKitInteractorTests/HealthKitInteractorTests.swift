@@ -78,6 +78,23 @@ struct HealthKitInteractorTests {
 
         #expect(key == "tssteps_phone")
     }
+    
+    @Test("Field name only contains alphanumeric characters and underscores")
+    func fieldNameContainsOnlyAllowedCharacters() {
+        let watch = HKDevice(name: "Apple Watch",
+                              manufacturer: "Apple Inc.",
+                              model: "Watch7,1",
+                              hardwareVersion: nil,
+                              firmwareVersion: nil,
+                              softwareVersion: nil,
+                              localIdentifier: "AAAAAA-1111",
+                              udiDeviceIdentifier: nil)
+
+        let key = HealthKitInteractor.addPrefixForDataKey(key: "steps", device: watch, dataPrefix: "ts")
+
+        let allowedCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_"))
+        #expect(key.unicodeScalars.allSatisfy { allowedCharacters.contains($0) })
+    }
 
     @Test("No device falls back to prefix + key only")
     func noDeviceReturnsPrefixPlusKey() {
