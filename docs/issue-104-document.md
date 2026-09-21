@@ -13,7 +13,7 @@ After installing Cozie, users sometimes cannot sync settings between the phone a
 
 3. A separate simulator problem was observed during testing: the pair appeared active, but the underlying communication service reported “No pair is active.” 
 
-## 3. Updated Sync Process 
+## 3. Sync Process
 
 1. The user presses Sync beside Experiment Settings in the phone app. The phone downloads the selected survey and reads the current settings.
 
@@ -29,7 +29,6 @@ After installing Cozie, users sometimes cannot sync settings between the phone a
 
 ## 4. Testing and Limitations 
 
-1. The updated version successfully synced a newly selected Movement survey from an iPhone 17 Pro simulator to a paired Apple Watch Series 11 simulator. This verified a new settings update rather than only displaying a previously saved questionnaire.
+1. End-to-end simulator testing of the current code is still pending. The test should confirm that selecting and syncing a different survey on the phone updates the questionnaire on the paired watch, rather than only displaying a previously saved questionnaire.
 
 2. Physical-device testing and first-install testing are still pending. Both apps should be updated together because the new phone expects a versioned acknowledgement. Issue #104 is not yet fully verified, and physical-device testing remains the priority.
-

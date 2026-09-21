@@ -145,7 +145,7 @@ struct QuestionsView: View {
             }
             .ignoresSafeArea(edges: .top)
             .onAppear {
-                viewModel.prepareForDisplay()
+                viewModel.prepareLocationAndConnectivityManager()
             }
         }
     }

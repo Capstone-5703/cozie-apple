@@ -11,7 +11,6 @@ import Combine
 import WatchKit
 
 class WatchSurveyViewModel: NSObject, ObservableObject {
-    static let shared = WatchSurveyViewModel()
     private static let appliedSnapshotKey = "CozieAppliedSettingsSnapshot"
 
     override init() {
@@ -228,7 +227,8 @@ class WatchSurveyViewModel: NSObject, ObservableObject {
     }
     
     // MARK: Public func
-    func prepareForDisplay() {
+    // The existing StateObject owns this receiver; connectivity starts in init.
+    func prepareLocationAndConnectivityManager() {
         locationManager.updateLocation(completion: nil)
         if state == .notsynced { prepareWatchSurvey() }
     }

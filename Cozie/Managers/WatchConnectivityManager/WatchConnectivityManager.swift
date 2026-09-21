@@ -103,7 +103,7 @@ class WatchConnectivityManagerPhone: NSObject, WatchConnectivityManagerPhoneProt
                 CommunicationKeys.userIDKey.rawValue: userID,
                 CommunicationKeys.expIDKey.rawValue: expID,
                 CommunicationKeys.passwordIDKey.rawValue: password,
-                CommunicationKeys.userOneSignalIDKey.rawValue: userOneSignalID,
+                CommunicationKeys.userOneSignalIDKey.rawValue: CozieStorage.shared.playerID(),
                 CommunicationKeys.timeInterval.rawValue: timeInterval,
                 CommunicationKeys.healthCutoffTimeInterval.rawValue: healthCutoffTimeInterval
             ]
@@ -203,9 +203,8 @@ extension WatchConnectivityManagerPhone: WCSessionDelegate {
     func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
         if let logs = message[CommunicationKeys.wsLogs.rawValue] as? String {
             loggerInteractor.logInfo(action: "", info: logs)
+            replyHandler([CommunicationKeys.received.rawValue: true])
         }
-        replyHandler([CommunicationKeys.received.rawValue: true])
-        DispatchQueue.main.async { self.receiveAcknowledgement(message) }
     }
 
     func sessionReachabilityDidChange(_ session: WCSession) {
