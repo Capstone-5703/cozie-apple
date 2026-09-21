@@ -29,6 +29,6 @@ After installing Cozie, users sometimes cannot sync settings between the phone a
 
 ## 4. Testing and Limitations 
 
-1. End-to-end simulator testing of the current code is still pending. The test should confirm that selecting and syncing a different survey on the phone updates the questionnaire on the paired watch, rather than only displaying a previously saved questionnaire.
+1. Manual end-to-end simulator testing of the current code has passed. Selecting and syncing a different survey on the phone successfully updated the questionnaire on the paired watch, confirming a new settings update rather than only displaying a previously saved questionnaire.
 
 2. Physical-device testing and first-install testing are still pending. Both apps should be updated together because the new phone expects a versioned acknowledgement. Issue #104 is not yet fully verified, and physical-device testing remains the priority.
