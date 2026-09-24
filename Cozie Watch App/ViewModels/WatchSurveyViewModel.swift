@@ -86,12 +86,6 @@ class WatchSurveyViewModel: NSObject, ObservableObject {
         if !storage.dataSynced() {
             state = .notsynced
         } else {
-            //            let lastUpdateInSeconds = Int(Date().timeIntervalSince1970) - storage.lastSurveySendInterval()
-            //            let timeInterval = storage.timeInterval()
-            //            if storage.lastSurveySendInterval() > 0, timeInterval > 0, (lastUpdateInSconds - timeInterval) < 0 {
-            //                state = .timeout
-            //
-            //            } else {
             state = .synced
             startTime = Date()
             syncSurvey()
@@ -104,38 +98,11 @@ class WatchSurveyViewModel: NSObject, ObservableObject {
                 }
             }
             
-            // Uncomment for test
-//            Task {
-//                try await Task.sleep(nanoseconds: 10_000_000_000)
-//                self.healthCache = []
-//                self.cacheHealthState.send(.finished)
-//            }
-            
-            // Uncomment to test
-//            let defaultURLJSON = Bundle.main.url(forResource: "DefaultWSJSON", withExtension: "json")
-            /*if let url = defaultURLJSON {
-                do {
-                    let data = try Data(contentsOf: url)
-                    let wSurvey = try JSONDecoder().decode(WatchSurveyModelController.self, from: data)
-                    if let question = wSurvey.survey.first(where: { $0.questionID == (wSurvey.firstQuestionID ?? "failed") }) {
-                        // questionID has a side effect of questionsTitle !!!
-                        questionID = question.questionID
-                        
-                        questionsList = question.responseOptions
-                        questionsTitle = question.question
-                        currentSurvey = question
-                    }
-                } catch let error {
-                    debugPrint(error.localizedDescription)
-                }
-            }*/
-            
             if let json = StorageManager.shared.watchSurveyJSON() {
                 loadWatchSurvey(data: json)
             } else {
                 fatalError("Incorrect State!!!")
             }
-            //            }
         }
     }
     
@@ -255,7 +222,27 @@ class WatchSurveyViewModel: NSObject, ObservableObject {
     
     func sendWatchSurvey() {
         sendSurveyProgress = true
-        sendSurvey()
+        
+        // Request a fresh location right before sending, so the location
+        // attached to this response reflects where the participant is now
+        // rather than a stale location left over from an earlier request.
+        // If CoreLocation doesn't respond within the timeout (e.g. weak
+        // signal), fall back to whatever location is already available so
+        // submission is never blocked.
+        var didProceed = false
+        let proceed: () -> Void = { [weak self] in
+            guard !didProceed else { return }
+            didProceed = true
+            self?.sendSurvey()
+        }
+        
+        locationManager.updateLocation {
+            proceed()
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            proceed()
+        }
     }
     
     func backAction() {
