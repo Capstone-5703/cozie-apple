@@ -501,6 +501,145 @@ class SettingViewModel: ObservableObject {
     }
     // MARK: Reminders
     
+    // #96 Pause button: get the weekly reminders setting, generate a weekly reminders list
+    @MainActor
+    func reminderSlotsForPause() throws -> [WeeklyReminderSlot] {
+        guard let settings = settingsInteractor.currentSettings else {
+            throw PauseValidationError(
+                message: "Reminder settings could not be loaded."
+            )
+        }
+
+        // transfer "09:30" to 570 minutes
+        func minutes(from text: String?) throws -> Int {
+            let parts = (text ?? "").split(
+                separator: ":",
+                omittingEmptySubsequences: false
+            )
+
+            guard parts.count == 2,
+                  let hour = Int(parts[0]),
+                  let minute = Int(parts[1]),
+                  (0...23).contains(hour),
+                  (0...59).contains(minute) else {
+                throw PauseValidationError(
+                    message: "A saved reminder time is invalid."
+                )
+            }
+
+            return hour * 60 + minute
+        }
+
+        // code weekdays
+        func weekdays(from text: String?) throws -> [Int] {
+            let availableDays = DaysViewModel().list
+
+            let names = (text ?? "")
+                .split(separator: ",")
+                .map {
+                    String($0).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                .filter { !$0.isEmpty }
+
+            var result = Set<Int>()
+
+            for name in names {
+                guard let day = availableDays.first(where: {
+                    $0.titleShort() == name
+                }) else {
+                    throw PauseValidationError(
+                        message: "A saved reminder weekday is invalid."
+                    )
+                }
+
+                result.insert(day.dayIndex())
+            }
+
+            return result.sorted()
+        }
+
+        var slots = Set<WeeklyReminderSlot>()
+
+        // Watch: only count enabled reminder
+        if settings.wss_reminder_enabled {
+            let days = try weekdays(
+                from: settings.wss_participation_days
+            )
+
+            if !days.isEmpty {
+                let start = try minutes(
+                    from: settings.wss_participation_time_start
+                )
+                let end = try minutes(
+                    from: settings.wss_participation_time_end
+                )
+                let interval = Int(settings.wss_reminder_interval)
+
+                guard interval > 0, end > start else {
+                    throw PauseValidationError(
+                        message: "The watch reminder interval or time range is invalid."
+                    )
+                }
+
+                for weekday in days {
+                    for time in stride(
+                        from: start,
+                        to: end,
+                        by: interval
+                    ) {
+                        slots.insert(
+                            WeeklyReminderSlot(
+                                kind: .watch,
+                                weekday: weekday,
+                                hour: time / 60,
+                                minute: time % 60
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // Phone：one reminder a week
+        if settings.pss_reminder_enabled {
+            let days = try weekdays(
+                from: settings.pss_reminder_days
+            )
+
+            if !days.isEmpty {
+                let time = try minutes(
+                    from: settings.pss_reminder_time
+                )
+
+                for weekday in days {
+                    slots.insert(
+                        WeeklyReminderSlot(
+                            kind: .phone,
+                            weekday: weekday,
+                            hour: time / 60,
+                            minute: time % 60
+                        )
+                    )
+                }
+            }
+        }
+
+        // Fix the sequence to facilitate the subsequent generation of scheduling and inspection results
+        return slots.sorted {
+            if $0.weekday != $1.weekday {
+                return $0.weekday < $1.weekday
+            }
+            if $0.hour != $1.hour {
+                return $0.hour < $1.hour
+            }
+            if $0.minute != $1.minute {
+                return $0.minute < $1.minute
+            }
+            return $0.kind.rawValue < $1.kind.rawValue
+        }
+    }
+    
+    
     func prepareRemindersIfNeeded() {
         if let settings = settingsInteractor.currentSettings {
             configureWatchReminders(enabled: settings.wss_reminder_enabled)

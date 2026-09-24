@@ -6,6 +6,7 @@
 import SwiftUI
 import UserNotifications
 import OneSignalFramework
+import Combine
 
 struct PauseFeatureTestView: View {
 
@@ -17,6 +18,17 @@ struct PauseFeatureTestView: View {
     @State private var pendingCount = 0
     @State private var pushOptedIn = false
     @State private var logLines: [String] = []
+    
+    @State private var startNow = true
+    @State private var pauseStartDate = Date()
+    
+    @State private var currentTime = Date()
+    
+    @State private var isSavingPause = false
+    
+    private var pauseStatus: PauseStatus {
+        pauseManager.status(at: currentTime)
+    }
 
     var body: some View {
         NavigationView {
@@ -37,62 +49,71 @@ struct PauseFeatureTestView: View {
                 }
 
                 Section("Pause State") {
-                    TextField("Pause Reason", text: $pauseReason).disabled(pauseManager.isPaused)
+                    switch pauseStatus {
+                    case .noPause:
+                        Text("No Pause")
+                        
+                    case .scheduled:
+                        if let plan = pauseManager.plan{
+                            Text("Scheduled, starts at \(plan.startDate.formatted())")
+                        }
+                        
+                        Button("Cancel", role: .destructive){
+                            cancelPause()
+                        }.disabled(isSavingPause)
+                        
+                    case .active:
+                        if let plan = pauseManager.plan{
+                            Text("Active, ends at \(plan.endDate.formatted())")
+                        }
+                        Button("End Now"){
+                            endPauseNow()
+                        }.disabled(isSavingPause)
+                    }
                     
-                    DatePicker("Resume At",
-                               selection: $pauseEndDate,displayedComponents: [.date, .hourAndMinute])
+                    TextField("Pause Reason", text: $pauseReason).disabled(pauseStatus == .active)
                     
-                    
-                    //modify/save new end time button
-                    if pauseManager.isPaused{
-                        Button("Save End Time"){
-                            let saved = pauseManager.updateEndDate(pauseEndDate)
-                            if saved {
-                                log("Pause end time updated")
-                            } else {
-                                log("Update failed: choose a future time")
-                            }
+                    if pauseStatus == .active{
+                        // can't change startDate, after active
+                        if let plan = pauseManager.plan{
+                            Text("Started at \(plan.startDate.formatted())")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                        }
+                    }else{
+                        Toggle("Start now", isOn: $startNow)
+
+                        if !startNow {
+                            DatePicker(
+                                "Start time",
+                                selection: $pauseStartDate,
+                                displayedComponents: [.date, .hourAndMinute]
+                            )
                         }
                     }
                     
-                    Toggle("Pause Notifications", isOn: Binding(
-                        get: { pauseManager.isPaused },
-                        set: { $0 ? startPause() : resume() }
-                    ))
-
-                    if pauseManager.isPaused {
-                        
-                        if let startDate = pauseManager.pauseStartDate {
-                            Text("Pause start at \(startDate.formatted())")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        if let endDate = pauseManager.pauseEndDate {
-                            Text("Auto-resumes at \(endDate.formatted())")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        
-                        Text("Pause Reason: \(pauseManager.pauseReason)")
-                            .font(.caption)
+                    DatePicker(
+                       "End time",
+                       selection: $pauseEndDate,
+                       displayedComponents: [.date, .hourAndMinute]
+                   )
+                    
+                    Button("Save pause"){
+                        savePause()
+                    }.disabled( isSavingPause || pauseManager.storageError != nil)
+                    
+                    if let error = pauseManager.storageError{
+                        Text(error).foregroundColor(.red)
                     }
                 }
-
+                
                 Section("Test Reminder (Local)") {
                     
                     Button("Create Test Reminder") {
                         createTestReminder()
                     }
                     
-                    Button("Check Auto-Resume") {
-                        if pauseManager.autoResumeIfNeeded() {
-                            log("Auto-resumed")
-                            restoreNotificationsAfterResume()
-                        } else {
-                            log("Not expired pause to resume")
-                        }
-                    }
+                    
                     
                     Button("Refresh Pending Count") {
                         refreshPendingCount()
@@ -114,7 +135,7 @@ struct PauseFeatureTestView: View {
                 Section("Log") {
                     Button("Check Saved Pause Event"){
                         guard let event = pauseManager.latestEvent else {
-                            log("Please start a new pause first")
+                            log("Please save or change a pause plan first")
                             return
                         }
                         
@@ -145,7 +166,7 @@ struct PauseFeatureTestView: View {
                                         log("Event: \(savedEvent.eventType.rawValue)")
                                         log("Pause ID: \(savedEvent.pauseID.uuidString)")
                                         log("Reason: \(savedEvent.reason)")
-                                        log("Started: \(savedEvent.pauseStartDate.formatted())")
+                                        log("Planned start: \(savedEvent.pauseStartDate.formatted())")
                                         log("Recorded: \(savedEvent.occurredAt.formatted())")
 
                                         if let endDate = savedEvent.plannedEndDate {
@@ -154,6 +175,10 @@ struct PauseFeatureTestView: View {
 
                                         if let previousEndDate = savedEvent.previousEndDate {
                                             log("Previous end: \(previousEndDate.formatted())")
+                                        }
+                                        
+                                        if let actualEndDate = savedEvent.actualEndDate {
+                                            log("Actual end: \(actualEndDate.formatted())")
                                         }
 
                                         if let trigger = savedEvent.resumeTrigger {
@@ -178,98 +203,105 @@ struct PauseFeatureTestView: View {
             .navigationTitle("Pause Sandbox")
             .onAppear {
                 UserInteractor().prepareUser()
-                if let savedEndDate = pauseManager.pauseEndDate{
-                    pauseEndDate = savedEndDate
-                }
-                
-                if pauseManager.isPaused{
-                    pauseReason = pauseManager.pauseReason
-                } else {
-                    pauseReason = ""
-                }
+                loadPauseDraft()
                 
                 initializeOneSignalIfNeeded()
                 refreshPendingCount()
                 refreshPushStatus()
+                
             }
-            .onChange(of: pauseManager.isPaused){ isPaused in
-                if !isPaused{
-                    pauseReason = ""
+            .onReceive(
+                Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+            ) { date in
+                let previousStatus = pauseManager.status(at: currentTime)
+                currentTime = date
+                let newStatus = pauseManager.status(at: date)
+                if previousStatus != newStatus {
+                    loadPauseDraft()
                 }
             }
+                
         }
     }
 
     // get the pause status to initial Onesignal push
     private func initializeOneSignalIfNeeded() {
         OneSignal.initialize(CommunicationKeys.oneSignalAppID.rawValue, withLaunchOptions: nil)
-        if pauseManager.isPaused {
-            OneSignal.User.pushSubscription.optOut()
-            log("Paused: push opt-out requested")
+    }
+
+    private func loadPauseDraft() {
+        let now = Date()
+        currentTime = now
+
+        guard let plan = pauseManager.plan,
+              plan.status(at: now) != .noPause else {
+            startNow = true
+            pauseStartDate = now
+            pauseEndDate = now.addingTimeInterval(5 * 60)
+            pauseReason = ""
+            return
+        }
+
+        startNow = false
+        pauseStartDate = plan.startDate
+        pauseEndDate = plan.endDate
+        pauseReason = plan.reason
+    }
+
+    @MainActor
+    private func savePause() {
+        guard !isSavingPause else { return }
+        
+        
+        let requestedStart: Date?
+
+        if pauseManager.status() == .active {
+            requestedStart = pauseManager.plan?.startDate
         } else {
-            OneSignal.User.pushSubscription.optIn()
-            log("Not paused: push opt-in requested")
+            requestedStart = startNow ? nil : pauseStartDate
+        }
+
+        do {
+            let changed = try pauseManager.savePause(
+                startDate: requestedStart,
+                endDate: pauseEndDate,
+                reason: pauseReason
+            )
+
+            log(changed ? "Pause plan saved" : "No changes to save")
+            loadPauseDraft()
+        } catch {
+            log(error.localizedDescription)
         }
     }
 
-    private func startPause() {
-        let reason = pauseReason.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        guard !reason.isEmpty else {
-            log("Please enter a reason")
-            return
+    private func cancelPause() {
+        do {
+            try pauseManager.cancelPause()
+            log("Scheduled pause cancelled")
+            loadPauseDraft()
+        } catch {
+            log(error.localizedDescription)
         }
-        
-        guard pauseEndDate > Date() else {
-            log("Please choose a future end time")
-            return
-        }
-        
-        pauseManager.pause(
-            until: pauseEndDate,
-            reason: reason
-        )
+    }
 
-        reminderManager.removeWatchNotification {
-            reminderManager.removePhoneNotification{
-                DispatchQueue.main.async {
-                    log("Watch and phone reminders cancelled")
-                    refreshPendingCount()
-                }
-            }
+    private func endPauseNow() {
+        do {
+            try pauseManager.endPauseNow()
+            log("Pause ended manually")
+            loadPauseDraft()
+        } catch {
+            log(error.localizedDescription)
         }
-
-        OneSignal.User.pushSubscription.optOut()
-        log("Push subscription opted out")
-        refreshPushStatus()
     }
     
-    // resume for manual & auto
-    private func restoreNotificationsAfterResume(){
-        guard !pauseManager.isPaused else { return }
-        
-        createTestReminder()
-        
-        OneSignal.User.pushSubscription.optIn()
-        log("Push opt-in requested")
-        
-        refreshPushStatus()
-        refreshPendingCount()
-    }
     
-    private func resume() {
-        
-        guard pauseManager.isPaused else {return}
-        
-        pauseManager.resume(trigger: .manual)
-        log("Manually Resumed")
-        
-        restoreNotificationsAfterResume()
-    }
+    
+    
 
     private func createTestReminder() {
-        guard !pauseManager.isPaused else {
-            log("Skipped: currently paused")
+        guard pauseManager.status() == .noPause else {
+            log("Skipped: a pause plan is scheduled or active")
             return
         }
 

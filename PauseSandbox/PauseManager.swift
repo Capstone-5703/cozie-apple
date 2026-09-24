@@ -8,9 +8,37 @@
 import Foundation
 import Combine
 
+enum PauseStatus{
+    case noPause //not pause plan, or pause end
+    case scheduled // saved the pause, but not start
+    case active  // at the set pause time
+}
+
+
+struct PausePlan: Codable, Equatable {
+    let id: UUID  // unique pause id
+    var startDate: Date
+    var endDate: Date
+    var reason: String
+    
+    func status(at now: Date = Date()) -> PauseStatus {
+        if now < endDate && now >= startDate {
+            return .active
+        }
+        if now < startDate {
+            return .scheduled
+        }
+        
+        return .noPause
+    }
+}
+
+
 enum PauseEventType: String, Codable {
-    case started = "pause_started"
+    case saved = "pause_saved"
     case updated = "pause_updated"
+    case cancelled = "pause_cancelled"
+    case started = "pause_started"
     case ended = "pause_ended"
 }
 
@@ -29,36 +57,59 @@ struct PauseEvent: Codable {
     let pauseStartDate: Date
     let plannedEndDate: Date?
     let reason: String
+    
+    var previousStartDate: Date? = nil
     var previousEndDate: Date? = nil
+    var previousReason: String? = nil
+    var actualEndDate: Date? = nil
     var resumeTrigger: ResumeTrigger? = nil // only at the end of pause event
 }
 
+// show fail reason
+struct PauseValidationError: LocalizedError{
+    let message: String
+    
+    var errorDescription: String? {
+        message
+    }
+}
+
 class PauseManager: ObservableObject {
-    @Published private(set) var pauseID: UUID? = nil
-    @Published private(set) var latestEvent: PauseEvent? = nil
-    @Published private(set) var isPaused: Bool
-    @Published private(set) var pauseEndDate: Date?
-    @Published private(set) var pauseStartDate: Date? = nil
-    @Published private(set) var pauseReason: String = ""
-
-    private let pauseIDKey = "sandbox_pause_id"
-    private let isPausedKey = "sandbox_pause_isPaused"
-    private let pauseEndDateKey = "sandbox_pause_endDate"
-    private let defaults = UserDefaults.standard
-    private let pauseStartDateKey = "sandbox_pause_startDate"
-    private let pauseReasonKey = "sandbox_pause_reason"
-
-    init() {
-        isPaused = defaults.bool(forKey: isPausedKey)
-        pauseEndDate = defaults.object(forKey: pauseEndDateKey) as? Date
-        pauseStartDate = defaults.object(forKey: pauseStartDateKey) as? Date
-        pauseReason = defaults.string(forKey: pauseReasonKey) ?? ""
+    @Published private(set) var plan: PausePlan?
+    @Published private(set) var latestEvent: PauseEvent?
+    @Published private(set) var storageError: String?
+    
+    private let defaults: UserDefaults
+    private let planKey = "participation_pause_plan_v1"
+    
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         
-        if let savedID = defaults.string(forKey: pauseIDKey){
-            pauseID = UUID(uuidString: savedID)
+        guard let data = defaults.data(forKey: planKey) else {
+            return
+        }
+        
+        do{
+            plan = try JSONDecoder().decode(
+                PausePlan.self,
+                from: data
+            )
+        } catch {
+            storageError = "The saved pause plan could not be loaded."
         }
     }
-
+    
+    //no plan - status 'no pause'; planed - conditinal status
+    func status(at now: Date = Date()) -> PauseStatus {
+        guard let plan = plan else {
+            return .noPause
+        }
+        return plan.status(at: now)
+    }
+    
+    
+    
+    
     //log
     private func recordEvent(_ event: PauseEvent) {
         latestEvent = event
@@ -86,125 +137,166 @@ class PauseManager: ObservableObject {
     }
     
     
-    //Start pause & storage pause info. Pass nil to pause indefinitely.
-    // endDate 传 nil 表示无限期暂停;
-    func pause(until endDate: Date?, reason: String) {
-        let startDate = Date()
-        let newPauseID = UUID()
-       
-        
-        defaults.set(newPauseID.uuidString, forKey: pauseIDKey)
-        
-        //update status
-        isPaused = true
-        pauseStartDate = startDate
-        pauseEndDate = endDate
-        pauseReason = reason
-        pauseID = newPauseID
-        
-        //save info to userdefaults
-        defaults.set(true, forKey: isPausedKey)
-        defaults.set(startDate, forKey: pauseStartDateKey)
-        defaults.set(reason, forKey: pauseReasonKey)
-        
-        if let endDate {
-            defaults.set(endDate, forKey: pauseEndDateKey)
-        } else {
-            defaults.removeObject(forKey: pauseEndDateKey)
+    //Start date == nil, means start from now
+    // true - change; false - no change
+    @discardableResult
+    func savePause(
+        startDate: Date?,
+        endDate: Date,
+        reason: String
+    )throws -> Bool {
+        guard storageError == nil else {
+            throw PauseValidationError(
+                message: "The saved pause plan could not be loaded."
+            )
         }
-        //create pause start event
-        let event = PauseEvent(
-            eventID: UUID(),
-            pauseID: newPauseID,
-            eventType: .started,
-            occurredAt: startDate,
-            pauseStartDate: startDate,
-            plannedEndDate: endDate,
-            reason: reason
+        
+        let now = Date()
+        let trimmedReason = reason.trimmingCharacters(
+            in: .whitespacesAndNewlines
         )
         
-        recordEvent(event)
-    }
+        guard !trimmedReason.isEmpty else {
+            throw PauseValidationError(
+                message: "Please enter a pause reason."
+            )
+        }
+        
+        let existingPlan: PausePlan?
+        if let currentPlan = plan,
+           currentPlan.status(at: now) != .noPause {
+            existingPlan = currentPlan
+        } else {
+            existingPlan = nil
+        }
+        
+        let resolvedStart: Date
+        
+        if let existingPlan = existingPlan,
+           existingPlan.status(at: now) == .active{
+            if let requestedStart = startDate,
+               requestedStart != existingPlan.startDate {
+                throw PauseValidationError(
+                    message: "The start time cannot be changed during a pause."
+                )
+            }
+            
+            guard trimmedReason == existingPlan.reason else{
+                throw PauseValidationError(
+                    message: "The reason cannot be changed during a pause."
+                )
+            }
+            
+            resolvedStart = existingPlan.startDate
+        }else{
+            resolvedStart = startDate ?? now
+            
+            guard resolvedStart >= now else{
+                throw PauseValidationError(
+                    message: "Choose Now or a future start time."
+                )
+            }
+        }
+        
+        guard endDate > resolvedStart, endDate > now else {
+                throw PauseValidationError(
+                    message: "The end time must be in the future and after the start time."
+                )
+            }
 
-    
-    // modify endtime before the pause original endtime
-    @discardableResult
-    func updateEndDate(_ newEndDate: Date) -> Bool {
-        // check the pause status is on, time is valid
-        guard isPaused,
-              newEndDate > Date(),
-              let currentPauseID = pauseID,
-              let startDate = pauseStartDate
-        else{
-            return false
+            let newPlan = PausePlan(
+                id: existingPlan?.id ?? UUID(),
+                startDate: resolvedStart,
+                endDate: endDate,
+                reason: trimmedReason
+        )
+        
+        // advoid duplicate log
+        if let existingPlan = existingPlan,
+               newPlan == existingPlan {
+                return false
         }
         
-        //update new end date
-        guard newEndDate != pauseEndDate else {
-            return true
-        }
-        
-        // store old time before update
-        let oldEndDate = pauseEndDate
-        
-        pauseEndDate = newEndDate
-        defaults.set(newEndDate, forKey: pauseEndDateKey)
-        
-        // save the event
+        //update
+        let data = try JSONEncoder().encode(newPlan)
+            defaults.set(data, forKey: planKey)
+            plan = newPlan
+
         let event = PauseEvent(
             eventID: UUID(),
-            pauseID: currentPauseID,
-            eventType: .updated,
-            occurredAt: Date(),
-            pauseStartDate: startDate,
-            plannedEndDate: newEndDate,
-            reason: pauseReason,
-            previousEndDate: oldEndDate
-            )
-            recordEvent(event)
-            return true
-    }
-    
-    // Manual resume
-    // 手动恢复
-    func resume(trigger: ResumeTrigger = .manual) {
-        guard isPaused else {return}
-        
-        let endedAt = Date()
-        
-        if let currentPauseID = pauseID,
-           let startDate = pauseStartDate {
-            let event = PauseEvent(
-                eventID: UUID(),
-                pauseID: currentPauseID,
-                eventType: .ended,
-                occurredAt: endedAt,
-                pauseStartDate: startDate,
-                plannedEndDate: pauseEndDate,
-                reason: pauseReason,
-                resumeTrigger: trigger
-            )
-            recordEvent(event)
-        }
-        isPaused = false
-        pauseID = nil
-        pauseStartDate = nil
-        pauseEndDate = nil
-        pauseReason = ""
+            pauseID: newPlan.id,
+            eventType: existingPlan == nil ? .saved : .updated,
+            occurredAt: now,
+            pauseStartDate: newPlan.startDate,
+            plannedEndDate: newPlan.endDate,
+            reason: newPlan.reason,
+            previousStartDate: existingPlan?.startDate,
+            previousEndDate: existingPlan?.endDate,
+            previousReason: existingPlan?.reason
+        )
 
-        defaults.set(false, forKey: isPausedKey)
-        defaults.removeObject(forKey: pauseIDKey)
-        defaults.removeObject(forKey: pauseStartDateKey)
-        defaults.removeObject(forKey: pauseEndDateKey)
-        defaults.removeObject(forKey: pauseReasonKey)
-    }
-
-    // Returns true if auto-resume was triggered.
-    // 到期自动恢复，返回是否触发了恢复
-    @discardableResult
-    func autoResumeIfNeeded() -> Bool {
-        guard isPaused, let pauseEndDate, Date() >= pauseEndDate else { return false }
-        resume(trigger: .scheduled)
+        recordEvent(event)
         return true
     }
+    
+    // Cancel scheduled pause plan
+    func cancelPause() throws {
+        let now = Date()
+        
+        guard let currentPlan = plan,
+              currentPlan.status(at: now) == .scheduled else {
+            throw PauseValidationError(
+                message: "Only a scheduled pause can be cancelled."
+            )
+        }
+        // storage the original plan
+        let event = PauseEvent(
+            eventID: UUID(),
+            pauseID: currentPlan.id,
+            eventType: .cancelled,
+            occurredAt: now,
+            pauseStartDate: currentPlan.startDate,
+            plannedEndDate: currentPlan.endDate,
+            reason: currentPlan.reason
+        )
+        recordEvent(event)
+        // clear the plan
+        defaults.removeObject(forKey: planKey)
+        plan = nil
+        
+    }
+    
+    
+    // End now: end the pause immediately, when pause is actived
+    func endPauseNow() throws {
+        let now = Date()
+
+        guard let currentPlan = plan,
+              currentPlan.status(at: now) == .active else {
+            throw PauseValidationError(
+                message: "Only an active pause can be ended now."
+            )
+        }
+
+        let event = PauseEvent(
+            eventID: UUID(),
+            pauseID: currentPlan.id,
+            eventType: .ended,
+            occurredAt: now,
+            pauseStartDate: currentPlan.startDate,
+            plannedEndDate: currentPlan.endDate,
+            reason: currentPlan.reason,
+            actualEndDate: now,
+            resumeTrigger: .manual
+        )
+
+        recordEvent(event)
+
+        defaults.removeObject(forKey: planKey)
+        plan = nil
+    }
+    
+
+
+    
 }

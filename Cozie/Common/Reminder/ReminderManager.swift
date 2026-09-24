@@ -25,6 +25,27 @@ struct PhoneReminder {
     let timeStart: Int
 }
 
+// #96 pause button reminders calculate
+struct WeeklyReminderSlot: Hashable {
+    enum Kind: String, Hashable {
+        case watch
+        case phone
+    }
+    let kind: Kind
+    
+    //1 = Sun; 2 = Mon; 3 = Tue ......
+    let weekday: Int
+    let hour: Int
+    let minute: Int
+}
+
+struct ReminderOccurrence {
+    let slot: WeeklyReminderSlot
+    let date: Date
+}
+
+// Calculate the minimum reminders that need to be arranged and check the capacity.
+
 // TODO: - Unit Tests
 class ReminderManager: NSObject, ObservableObject {
     
@@ -175,19 +196,294 @@ class ReminderManager: NSObject, ObservableObject {
         }
     }
     
+    //#96 Pause button: Generate the earliest batch of reminders within the specified time range
+    // Pause endDate < reminder < startDate
+    func reminderOccurrences(
+        for slots: [WeeklyReminderSlot],
+        after start: Date,
+        before end: Date,
+        maximumCount: Int,
+        includeStart: Bool = false,
+        calendar: Calendar = .current
+    ) -> [ReminderOccurrence] {
+        guard end > start, maximumCount > 0 else {
+            return []
+        }
+        var occurrences: [ReminderOccurrence] = []
+        
+        for slot in Set(slots) {
+            var components = DateComponents()
+                components.weekday = slot.weekday
+                components.hour = slot.hour
+                components.minute = slot.minute
+                components.second = 0
+            
+            // nextDate only search date after cursor
+            // -1s to cover start reminder
+            var cursor = includeStart
+                ? start.addingTimeInterval(-1)
+                : start
+
+            var count = 0
+
+            while count < maximumCount {
+                guard let nextDate = calendar.nextDate(
+                    after: cursor,
+                    matching: components,
+                    matchingPolicy: .nextTime,
+                    repeatedTimePolicy: .first,
+                    direction: .forward
+                ),
+                nextDate < end else {
+                    break
+                }
+
+                cursor = nextDate
+
+                // start might include ms
+                guard nextDate >= start else {
+                    continue
+                }
+
+                occurrences.append(
+                    ReminderOccurrence(
+                        slot: slot,
+                        date: nextDate
+                    )
+                )
+
+                count += 1
+            }
+        }
+
+        occurrences.sort {
+            if $0.date != $1.date {
+                return $0.date < $1.date
+            }
+
+            return $0.slot.kind.rawValue < $1.slot.kind.rawValue
+        }
+
+        return Array(occurrences.prefix(maximumCount))
+    }
     
-    // MARK: - HELPRES
-    func retriveHourAndMinute(time: Int) -> (hour: Int, minute: Int) {
-        var hour = 0
-        var minute = time
-        if time > 60 {
-            hour = time / 60
-            minute = time - (hour * 60)
+    // calculate available slot
+    func availablePauseReminderCapacity(
+        completion: @escaping (Int) -> Void
+    ) {
+        center.getPendingNotificationRequests { [weak self] requests in
+            guard let self = self else { return }
+            
+            // replace old reminder schedule
+            let otherCount = requests.filter { request in
+                !request.identifier.hasPrefix(self.watchIndentifier)
+                    && !request.identifier.hasPrefix(self.phoneInderifier)
+            }.count
+
+            let available = max(0, 63 - otherCount)
+            
+            DispatchQueue.main.async {
+                completion(available)
+            }
+        }
+    }
+    
+    
+    // Calculate the minimum reminders that need to be arranged and check the capacity.
+    func minimumRemindersForPause(
+        slots: [WeeklyReminderSlot],
+        pauseStart: Date,
+        pauseEnd: Date,
+        availableCapacity: Int,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) throws -> [ReminderOccurrence] {
+        guard pauseEnd > pauseStart, pauseEnd > now else {
+            throw PauseValidationError(
+                message: "The pause end time must be after its start and in the future."
+            )
+        }
+        guard (0...63).contains(availableCapacity) else {
+            throw PauseValidationError(
+                message: "The reminder capacity is invalid."
+            )
         }
         
-        return (hour: hour, minute: minute)
+        // if no reminder
+        guard !slots.isEmpty else{
+            return []
+        }
+        
+        // check capacity by +1
+        let beforePause = reminderOccurrences(
+            for: slots,
+            after: now,
+            before: pauseStart,
+            maximumCount: availableCapacity + 1,
+            calendar: calendar
+        )
+        
+        guard beforePause.count <= availableCapacity else {
+            throw PauseValidationError(
+                message: "Too many reminders occur before this pause. Choose an earlier start."
+            )
+        }
+        
+        let remainingCapacity = availableCapacity - beforePause.count
+        
+        // reserve 3 calendar day after pause
+        guard let threeDaysLater = calendar.date(
+            byAdding: .day,
+            value: 3,
+            to: pauseEnd
+        ),
+        let searchEnd = calendar.date(
+            byAdding: .day,
+            value: 8,
+            to: pauseEnd
+        ) else {
+            throw PauseValidationError(
+                message: "The reminder coverage dates could not be calculated."
+            )
+        }
+        
+        // search the first reminder after pause
+        let firstAfterPause = reminderOccurrences(
+            for: slots,
+            after: pauseEnd,
+            before: searchEnd,
+            maximumCount: 1,
+            includeStart: true,
+            calendar: calendar
+        )
+        
+        guard let firstReminder = firstAfterPause.first else {
+            throw PauseValidationError(
+                message: "The next reminder could not be calculated."
+            )
+        }
+        
+        // at least cover 3 days
+        let coverageEnd = max(
+            threeDaysLater,
+            firstReminder.date.addingTimeInterval(1)
+        )
+        
+        let afterPause = reminderOccurrences(
+            for: slots,
+            after: pauseEnd,
+            before: coverageEnd,
+            maximumCount: remainingCapacity + 1,
+            includeStart: true,
+            calendar: calendar
+        )
+        
+        guard afterPause.count <= remainingCapacity else {
+            throw PauseValidationError(
+                message: "There is not enough space for reminders after the pause. Try an earlier start; if it still fails, the reminder frequency exceeds the supported capacity."
+            )
+        }
+        
+        return beforePause + afterPause
     }
-}
+    
+    #if DEBUG
+    func debugCheckPauseCapacity() {
+        // fix the date ans time
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        func date(_ day: Int, _ hour: Int = 0) -> Date {
+            calendar.date(
+                from: DateComponents(
+                    year: 2026,
+                    month: 9,
+                    day: day,
+                    hour: hour
+                )
+            )!
+        }
+
+        // everyday 09:00，one Phone reminder
+        let slots = (1...7).map {
+            WeeklyReminderSlot(
+                kind: .phone,
+                weekday: $0,
+                hour: 9,
+                minute: 0
+            )
+        }
+
+        let now = date(21, 8)
+        let pauseStart = date(22, 9)
+        let pauseEnd = date(24, 9)
+
+        do {
+            let reminders = try minimumRemindersForPause(
+                slots: slots,
+                pauseStart: pauseStart,
+                pauseEnd: pauseEnd,
+                availableCapacity: 4,
+                now: now,
+                calendar: calendar
+            )
+
+            let expectedDates = [
+                date(21, 9), // before pause
+                date(24, 9), // after pause
+                date(25, 9),
+                date(26, 9)
+            ]
+
+            guard reminders.map({ $0.date }) == expectedDates else {
+                print("FAIL: reminder dates do not match expectations")
+                return
+            }
+
+            print("PASS: correct dates, including the pause-end boundary")
+        } catch {
+            print("FAIL: capacity 4 should be sufficient: \(error)")
+            return
+        }
+
+        do {
+            _ = try minimumRemindersForPause(
+                slots: slots,
+                pauseStart: pauseStart,
+                pauseEnd: pauseEnd,
+                availableCapacity: 3,
+                now: now,
+                calendar: calendar
+            )
+
+            print("FAIL: capacity 3 should be rejected")
+        } catch {
+            // This group only accepts the expected error of "insufficient capacity after recovery"
+            let expectedMessage =
+                "There is not enough space for reminders after the pause. Try an earlier start; if it still fails, the reminder frequency exceeds the supported capacity."
+
+            if let validationError = error as? PauseValidationError,
+               validationError.message == expectedMessage {
+                print("PASS: insufficient capacity is rejected")
+            } else {
+                print("FAIL: unexpected error: \(error)")
+            }
+        }
+    }
+    #endif
+        
+        // MARK: - HELPRES
+        func retriveHourAndMinute(time: Int) -> (hour: Int, minute: Int) {
+            var hour = 0
+            var minute = time
+            if time > 60 {
+                hour = time / 60
+                minute = time - (hour * 60)
+            }
+            
+            return (hour: hour, minute: minute)
+        }
+    }
 
 // MARK: -  UNUserNotificationCenterDelegate
 
