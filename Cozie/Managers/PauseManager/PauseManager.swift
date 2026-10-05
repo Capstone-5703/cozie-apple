@@ -2,8 +2,7 @@
 //  PauseManager.swift
 //  Cozie
 //
-//  Tracks pause state locally for the prototype.
-//  暂停功能原型：本地记录暂停状态
+//  Stores pause plans and records pause events
 
 import Foundation
 import Combine
@@ -81,6 +80,19 @@ class PauseManager: ObservableObject {
     
     private let defaults: UserDefaults
     private let planKey = "participation_pause_plan_v1"
+    @MainActor
+    private var pauseLogStore: PauseLogStore?
+
+    @MainActor
+    func eventLogStore() throws -> PauseLogStore {
+        if let store = pauseLogStore {
+            return store
+        }
+
+        let store = try PauseLogStore()
+        pauseLogStore = store
+        return store
+    }
     
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -111,47 +123,73 @@ class PauseManager: ObservableObject {
     
     
     //log
-    private func recordEvent(_ event: PauseEvent) {
-        latestEvent = event
-        
-        //get user info
-        guard UserInteractor().currentUser != nil else {
-            print("Pause log not written: current user is missing")
-            return
-        }
-        
-        do{
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            
-            let data = try encoder.encode(event)
-            let json = String(decoding: data, as: UTF8.self)
-            
-            LoggerInteractor.shared.logInfo(
-                action: "",
-                info:json
+    @MainActor
+    private func recordEvent(_ event: PauseEvent) throws {
+        guard let user = UserInteractor().currentUser,
+              let participantID = user.participantID,
+              !participantID.isEmpty,
+              let experimentID = user.experimentID,
+              !experimentID.isEmpty else {
+            throw PauseValidationError(
+                message: "Pause history could not be saved because participant information is missing."
             )
-        }catch {
-            print("Pause event encoding failed: \(error)")
         }
+
+        let record = PauseLogRecord(
+            event: event,
+            experimentID: experimentID,
+            participantID: participantID,
+            passwordID: user.passwordID ?? "",
+            oneSignalID: CozieStorage.shared.playerID()
+        )
+
+        let backend = BackendInteractor().currentBackendSettings
+        let destination = backend?.api_write_url?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let destinationURL: String?
+
+        if let destination = destination, !destination.isEmpty {
+            destinationURL = destination
+        } else {
+            destinationURL = nil
+        }
+
+        let data = try JSONEncoder().encode(record)
+        let json = String(decoding: data, as: UTF8.self)
+
+        // Save the durable history and pending-upload entry first.
+        let store = try eventLogStore()
+        try store.append(
+            record,
+            destinationURL: destinationURL
+        )
+
+        latestEvent = event
+
+        // Also include the record in the existing local backup log.
+        LoggerInteractor.shared.logInfo(
+            action: "",
+            info: json
+        )
     }
     
     
     //Start date == nil, means start from now
     // true - change; false - no change
-    @discardableResult
-    func savePause(
+    // Verify and return the candidate plan without changing the saved data
+    func preparePause(
         startDate: Date?,
         endDate: Date,
-        reason: String
-    )throws -> Bool {
+        reason: String,
+        at now: Date = Date()
+    ) throws -> PausePlan {
         guard storageError == nil else {
             throw PauseValidationError(
                 message: "The saved pause plan could not be loaded."
             )
         }
         
-        let now = Date()
         let trimmedReason = reason.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
@@ -211,35 +249,94 @@ class PauseManager: ObservableObject {
                 reason: trimmedReason
         )
         
-        // advoid duplicate log
-        if let existingPlan = existingPlan,
-               newPlan == existingPlan {
-                return false
+        return newPlan
+    }
+    
+    // Save the same candidate plan without recalculating the start time or generating a number
+    // An expectedPlan is an old plan prepared for operation, used to check if any other modifications have occurred during the period.
+    @MainActor
+    @discardableResult
+    func commitPause(
+        _ candidate: PausePlan,
+        replacing expectedPlan: PausePlan?,
+        occurredAt: Date
+    ) throws -> Bool {
+        guard storageError == nil else {
+            throw PauseValidationError(
+                message: "The saved pause plan could not be loaded."
+            )
         }
-        
-        //update
-        let data = try JSONEncoder().encode(newPlan)
-            defaults.set(data, forKey: planKey)
-            plan = newPlan
+
+        guard plan == expectedPlan else {
+            throw PauseValidationError(
+                message: "The pause plan changed during this operation. Please try again."
+            )
+        }
+
+        guard candidate != expectedPlan else {
+            return false
+        }
+
+        // When encoding fails, the original data is not changed
+        let data = try JSONEncoder().encode(candidate)
+
+        let previousPlan: PausePlan?
+        if let expectedPlan = expectedPlan,
+           expectedPlan.id == candidate.id {
+            previousPlan = expectedPlan
+        } else {
+            previousPlan = nil
+        }
 
         let event = PauseEvent(
             eventID: UUID(),
-            pauseID: newPlan.id,
-            eventType: existingPlan == nil ? .saved : .updated,
-            occurredAt: now,
-            pauseStartDate: newPlan.startDate,
-            plannedEndDate: newPlan.endDate,
-            reason: newPlan.reason,
-            previousStartDate: existingPlan?.startDate,
-            previousEndDate: existingPlan?.endDate,
-            previousReason: existingPlan?.reason
+            pauseID: candidate.id,
+            eventType: previousPlan == nil ? .saved : .updated,
+            occurredAt: occurredAt,
+            pauseStartDate: candidate.startDate,
+            plannedEndDate: candidate.endDate,
+            reason: candidate.reason,
+            previousStartDate: previousPlan?.startDate,
+            previousEndDate: previousPlan?.endDate,
+            previousReason: previousPlan?.reason
         )
 
-        recordEvent(event)
+        try recordEvent(event)
+
+        defaults.set(data, forKey: planKey)
+        plan = candidate
+
         return true
     }
     
+    // After verification, save and record the event
+    @MainActor
+    @discardableResult
+    func savePause(
+        startDate: Date?,
+        endDate: Date,
+        reason: String
+    ) throws -> Bool {
+        let now = Date()
+        let originalPlan = plan
+
+        let candidate = try preparePause(
+            startDate: startDate,
+            endDate: endDate,
+            reason: reason,
+            at: now
+        )
+
+        return try commitPause(
+            candidate,
+            replacing: originalPlan,
+            occurredAt: now
+        )
+    }
+    
+    
     // Cancel scheduled pause plan
+    @MainActor
     func cancelPause() throws {
         let now = Date()
         
@@ -259,7 +356,7 @@ class PauseManager: ObservableObject {
             plannedEndDate: currentPlan.endDate,
             reason: currentPlan.reason
         )
-        recordEvent(event)
+        try recordEvent(event)
         // clear the plan
         defaults.removeObject(forKey: planKey)
         plan = nil
@@ -268,6 +365,7 @@ class PauseManager: ObservableObject {
     
     
     // End now: end the pause immediately, when pause is actived
+    @MainActor
     func endPauseNow() throws {
         let now = Date()
 
@@ -290,12 +388,29 @@ class PauseManager: ObservableObject {
             resumeTrigger: .manual
         )
 
-        recordEvent(event)
+        try recordEvent(event)
 
         defaults.removeObject(forKey: planKey)
         plan = nil
     }
     
+    // Only after the restoration reminder is successful will the corresponding expired plans be cleared
+    func clearExpiredPause(expectedPlan: PausePlan) throws {
+        guard plan == expectedPlan else {
+            throw PauseValidationError(
+                message: "The pause plan changed during restoration."
+            )
+        }
+
+        guard expectedPlan.endDate <= Date() else {
+            throw PauseValidationError(
+                message: "The pause has not ended yet."
+            )
+        }
+
+        defaults.removeObject(forKey: planKey)
+        plan = nil
+    }
 
 
     

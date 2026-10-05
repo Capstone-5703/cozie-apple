@@ -9,10 +9,17 @@ import OneSignalFramework
 import Combine
 
 struct PauseFeatureTestView: View {
+    
+    @StateObject private var pauseService: PauseService
 
-    @StateObject private var pauseManager = PauseManager()
-    @StateObject private var reminderManager = ReminderManager()
+    private var pauseManager: PauseManager {
+        pauseService.pauseManager
+    }
 
+    private var reminderManager: ReminderManager {
+        pauseService.reminderManager
+    }
+    
     @State private var pauseEndDate = Date().addingTimeInterval(5 * 60)
     @State private var pauseReason = ""
     @State private var pendingCount = 0
@@ -26,10 +33,22 @@ struct PauseFeatureTestView: View {
     
     @State private var isSavingPause = false
     
+    @Environment(\.scenePhase) private var scenePhase
+    
     private var pauseStatus: PauseStatus {
         pauseManager.status(at: currentTime)
     }
-
+    
+    @MainActor
+    init() {
+        _pauseService = StateObject(
+            wrappedValue: PauseService(
+                pauseManager: PauseManager(),
+                reminderManager: ReminderManager()
+            )
+        )
+    }
+    
     var body: some View {
         NavigationView {
             Form {
@@ -47,7 +66,7 @@ struct PauseFeatureTestView: View {
                         }
                     }
                 }
-
+                
                 Section("Pause State") {
                     switch pauseStatus {
                     case .noPause:
@@ -77,12 +96,12 @@ struct PauseFeatureTestView: View {
                         // can't change startDate, after active
                         if let plan = pauseManager.plan{
                             Text("Started at \(plan.startDate.formatted())")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                     }else{
                         Toggle("Start now", isOn: $startNow)
-
+                        
                         if !startNow {
                             DatePicker(
                                 "Start time",
@@ -93,10 +112,10 @@ struct PauseFeatureTestView: View {
                     }
                     
                     DatePicker(
-                       "End time",
-                       selection: $pauseEndDate,
-                       displayedComponents: [.date, .hourAndMinute]
-                   )
+                        "End time",
+                        selection: $pauseEndDate,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
                     
                     Button("Save pause"){
                         savePause()
@@ -111,7 +130,7 @@ struct PauseFeatureTestView: View {
                     
                     Button("Create Test Reminder") {
                         createTestReminder()
-                    }
+                    }.disabled(isSavingPause)
                     
                     
                     
@@ -122,7 +141,7 @@ struct PauseFeatureTestView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-
+                
                 Section("Remote Push (OneSignal)") {
                     Button("Refresh Push Status") {
                         refreshPushStatus()
@@ -131,70 +150,8 @@ struct PauseFeatureTestView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-
+                
                 Section("Log") {
-                    Button("Check Saved Pause Event"){
-                        guard let event = pauseManager.latestEvent else {
-                            log("Please save or change a pause plan first")
-                            return
-                        }
-                        
-                        LoggerInteractor.shared.loggedInfo {
-                            url, error in guard let url = url else {
-                                log(error ?? "Log file not found")
-                                return
-                            }
-                        
-                            do {
-                                let contents = try String(contentsOf: url, encoding: .utf8)
-
-                                let data = Data(contents.utf8)
-                                let records = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] ?? []
-                                
-                                // find the record
-                                if let savedRecord = records.first(where: {
-                                    ($0["eventID"] as? String) == event.eventID.uuidString
-                                }) {
-                                    let eventData = try JSONSerialization.data(withJSONObject: savedRecord)
-
-                                    let decoder = JSONDecoder()
-                                    decoder.dateDecodingStrategy = .iso8601
-                                    
-                                    // json to pause event
-                                    let savedEvent = try decoder.decode(PauseEvent.self, from: eventData)
-
-                                        log("Event: \(savedEvent.eventType.rawValue)")
-                                        log("Pause ID: \(savedEvent.pauseID.uuidString)")
-                                        log("Reason: \(savedEvent.reason)")
-                                        log("Planned start: \(savedEvent.pauseStartDate.formatted())")
-                                        log("Recorded: \(savedEvent.occurredAt.formatted())")
-
-                                        if let endDate = savedEvent.plannedEndDate {
-                                            log("Planned end: \(endDate.formatted())")
-                                        }
-
-                                        if let previousEndDate = savedEvent.previousEndDate {
-                                            log("Previous end: \(previousEndDate.formatted())")
-                                        }
-                                        
-                                        if let actualEndDate = savedEvent.actualEndDate {
-                                            log("Actual end: \(actualEndDate.formatted())")
-                                        }
-
-                                        if let trigger = savedEvent.resumeTrigger {
-                                            log("Resume trigger: \(trigger.rawValue)")
-                                        }
-                                    } else {
-                                        log("Event not found yet. Try again shortly.")
-                                    }
-                                
-                                } catch {
-                                        log("Cannot read log: \(error.localizedDescription)")
-                                        }
-                            }
-                        }
-                    
-                    
                     ForEach(logLines.reversed(), id: \.self) { line in
                         Text(line).font(.system(size: 12, design: .monospaced))
                     }
@@ -213,26 +170,34 @@ struct PauseFeatureTestView: View {
             .onReceive(
                 Timer.publish(every: 1, on: .main, in: .common).autoconnect()
             ) { date in
+                guard !isSavingPause else { return }
+                
                 let previousStatus = pauseManager.status(at: currentTime)
                 currentTime = date
                 let newStatus = pauseManager.status(at: date)
+                
                 if previousStatus != newStatus {
                     loadPauseDraft()
                 }
+                restoreExpiredPauseIfNeeded()
             }
-                
+            .onChange(of: scenePhase) { phase in
+                if phase == .active {
+                    restoreExpiredPauseIfNeeded()
+                }
+            }
         }
     }
-
+    
     // get the pause status to initial Onesignal push
     private func initializeOneSignalIfNeeded() {
         OneSignal.initialize(CommunicationKeys.oneSignalAppID.rawValue, withLaunchOptions: nil)
     }
-
+    
     private func loadPauseDraft() {
         let now = Date()
         currentTime = now
-
+        
         guard let plan = pauseManager.plan,
               plan.status(at: now) != .noPause else {
             startNow = true
@@ -241,62 +206,136 @@ struct PauseFeatureTestView: View {
             pauseReason = ""
             return
         }
-
+        
         startNow = false
         pauseStartDate = plan.startDate
         pauseEndDate = plan.endDate
         pauseReason = plan.reason
     }
-
+    
     @MainActor
     private func savePause() {
-        guard !isSavingPause else { return }
-        
-        
+        guard !isSavingPause, !pauseService.isBusy else {
+            return
+        }
+
         let requestedStart: Date?
 
-        if pauseManager.status() == .active {
-            requestedStart = pauseManager.plan?.startDate
+        if pauseService.status() == .active {
+            requestedStart = pauseService.plan?.startDate
         } else {
             requestedStart = startNow ? nil : pauseStartDate
         }
 
-        do {
-            let changed = try pauseManager.savePause(
-                startDate: requestedStart,
-                endDate: pauseEndDate,
-                reason: pauseReason
-            )
+        let requestedEnd = pauseEndDate
+        let requestedReason = pauseReason
 
-            log(changed ? "Pause plan saved" : "No changes to save")
-            loadPauseDraft()
-        } catch {
-            log(error.localizedDescription)
+        isSavingPause = true
+
+        Task { @MainActor in
+            defer {
+                isSavingPause = false
+                refreshPendingCount()
+            }
+
+            do {
+                let changed = try await pauseService.savePause(
+                    startDate: requestedStart,
+                    endDate: requestedEnd,
+                    reason: requestedReason
+                )
+
+                if changed {
+                    log("Pause plan saved and reminder schedule updated.")
+                } else {
+                    log("No changes to save.")
+                }
+
+                loadPauseDraft()
+            } catch {
+                log("Could not save pause: \(error.localizedDescription)")
+            }
         }
     }
 
+    @MainActor
     private func cancelPause() {
-        do {
-            try pauseManager.cancelPause()
-            log("Scheduled pause cancelled")
-            loadPauseDraft()
-        } catch {
-            log(error.localizedDescription)
-        }
+        finishPause(expectedStatus: .scheduled)
     }
 
+    @MainActor
     private func endPauseNow() {
-        do {
-            try pauseManager.endPauseNow()
-            log("Pause ended manually")
-            loadPauseDraft()
-        } catch {
-            log(error.localizedDescription)
+        finishPause(expectedStatus: .active)
+    }
+    
+    @MainActor
+    private func finishPause(expectedStatus: PauseStatus) {
+        guard !isSavingPause, !pauseService.isBusy else {
+            return
+        }
+
+        isSavingPause = true
+
+        Task { @MainActor in
+            defer {
+                isSavingPause = false
+                refreshPendingCount()
+            }
+
+            do {
+                switch expectedStatus {
+                case .scheduled:
+                    try await pauseService.cancelPause()
+                    log("Pause cancelled. Original reminder schedule restored.")
+
+                case .active:
+                    try await pauseService.endPauseNow()
+                    log("Pause ended early. Original reminder schedule restored.")
+
+                case .noPause:
+                    log("There is no pause to finish.")
+                }
+
+                loadPauseDraft()
+            } catch {
+                log(error.localizedDescription)
+                loadPauseDraft()
+            }
         }
     }
     
-    
-    
+    @MainActor
+    private func restoreExpiredPauseIfNeeded() {
+        guard !isSavingPause, !pauseService.isBusy else {
+            return
+        }
+
+        guard let plan = pauseService.plan,
+              plan.endDate <= Date() else {
+            return
+        }
+
+        isSavingPause = true
+
+        Task { @MainActor in
+            defer {
+                isSavingPause = false
+                refreshPendingCount()
+            }
+
+            do {
+                let restored = try await pauseService
+                    .restoreExpiredPauseIfNeeded()
+
+                if restored {
+                    log("Pause expired. Original reminder schedule restored.")
+                    loadPauseDraft()
+                }
+            } catch {
+                log("Could not restore reminders: \(error.localizedDescription)")
+            }
+        }
+    }
     
 
     private func createTestReminder() {
@@ -329,9 +368,47 @@ struct PauseFeatureTestView: View {
     }
 
     private func refreshPendingCount() {
-        UNUserNotificationCenter.current().getPendingNotificationRequests { requests in
-            DispatchQueue.main.async { pendingCount = requests.count }
-        }
+        UNUserNotificationCenter.current()
+            .getPendingNotificationRequests { requests in
+                DispatchQueue.main.async {
+                    pendingCount = requests.count
+
+                    #if DEBUG
+                    let pauseRequests = requests.filter {
+                        $0.identifier.hasPrefix("watch-pause-")
+                            || $0.identifier.hasPrefix("phone-pause-")
+                    }
+
+                    let scheduled: [(id: String, date: Date)] =
+                        pauseRequests.compactMap { request in
+                            guard let trigger = request.trigger
+                                as? UNCalendarNotificationTrigger,
+                                  let date = trigger.nextTriggerDate() else {
+                                return nil
+                            }
+
+                            return (id: request.identifier, date: date)
+                        }
+                        .sorted { $0.date < $1.date }
+
+                    log("Pause requests with future dates: \(scheduled.count)")
+
+                    // only show top 5
+                    for item in scheduled.prefix(5) {
+                        log("\(item.id): \(item.date.formatted())")
+                    }
+
+                    if let plan = pauseManager.plan {
+                        let insidePause = scheduled.filter {
+                            $0.date >= plan.startDate
+                                && $0.date < plan.endDate
+                        }
+
+                        log("Requests inside pause: \(insidePause.count)")
+                    }
+                    #endif
+                }
+            }
     }
 
     private func refreshPushStatus() {
