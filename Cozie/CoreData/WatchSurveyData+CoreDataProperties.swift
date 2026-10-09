@@ -21,6 +21,8 @@ extension WatchSurveyData {
     @NSManaged public var surveyName: String?
     @NSManaged public var selected: Bool
     @NSManaged public var external: Bool
+    @NSManaged public var thankYouMessage: String?
+    @NSManaged public var submitButtonLabel: String?
     @NSManaged public var survey: NSSet?
 
 }
@@ -53,6 +55,8 @@ extension WatchSurveyData : Identifiable {
                
         let watchSurvey = WatchSurveyModelController(surveyName: self.surveyName ?? "", surveyID: self.surveyID ?? "", survey: surveyList ?? [])
         watchSurvey.firstQuestionID = self.firstQuestionID ?? ""
+        watchSurvey.thankYouMessage = self.thankYouMessage
+        watchSurvey.submitButtonLabel = self.submitButtonLabel
         return watchSurvey
     }
 }

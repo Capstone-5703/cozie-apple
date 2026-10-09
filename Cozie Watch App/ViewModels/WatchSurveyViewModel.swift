@@ -54,6 +54,10 @@ class WatchSurveyViewModel: NSObject, ObservableObject {
     @Published var questionsTitle: String = ""
     @Published var state: CozieAppState = .notsynced
     @Published var sendSurveyProgress: Bool = false
+    static let defaultThankYouMessage = "Thank you."//
+    static let defaultSubmitButtonLabel = "Submit survey"
+    @Published var thankYouMessage: String = WatchSurveyViewModel.defaultThankYouMessage
+    @Published var submitButtonLabel: String = WatchSurveyViewModel.defaultSubmitButtonLabel //
     
     private(set) var questionID: String = ""
     
@@ -69,6 +73,8 @@ class WatchSurveyViewModel: NSObject, ObservableObject {
         do {
             let wSurvey = try JSONDecoder().decode(WatchSurveyModelController.self, from: data)
             watchSurvey = wSurvey
+            thankYouMessage = wSurvey.thankYouMessage ?? WatchSurveyViewModel.defaultThankYouMessage
+            submitButtonLabel = wSurvey.submitButtonLabel ?? WatchSurveyViewModel.defaultSubmitButtonLabel
             if let question = wSurvey.survey.first(where: { $0.questionID == (wSurvey.firstQuestionID ?? "failed") }) {
                 // questionID has a side effect of questionsTitle !!!
                 questionID = question.questionID

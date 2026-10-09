@@ -1,3 +1,6 @@
+//
+//  WatchSurveyThankYouDecodingTest.swift
+
 import Testing
 import Foundation
 @testable import Cozie

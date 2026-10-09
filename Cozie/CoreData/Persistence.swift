@@ -155,6 +155,8 @@ extension PersistenceController: DataBaseStorageProtocol {
             watchSurvey.surveyID = surveyModel.surveyID
             watchSurvey.surveyName = surveyModel.surveyName
             watchSurvey.firstQuestionID = surveyModel.firstQuestionID
+            watchSurvey.thankYouMessage = surveyModel.thankYouMessage
+            watchSurvey.submitButtonLabel = surveyModel.submitButtonLabel
             
             if selected  {
                 watchSurvey.selected = selected

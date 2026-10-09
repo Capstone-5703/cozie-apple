@@ -13,12 +13,16 @@ class WatchSurveyModelController: Codable {
     var surveyName, surveyID: String
     var firstQuestionID: String? = nil
     var survey: [Survey]
+    var thankYouMessage: String? = nil //
+    var submitButtonLabel: String? = nil //
 
     enum CodingKeys: String, CodingKey {
         case surveyName = "survey_name"
         case surveyID = "survey_id"
         case survey
         case firstQuestionID
+        case thankYouMessage = "thank_you_message" //
+        case submitButtonLabel = "submit_button_label" //
     }
 
     init(surveyName: String, surveyID: String, survey: [Survey]) {

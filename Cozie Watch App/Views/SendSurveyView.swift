@@ -15,7 +15,7 @@ struct SendSurveyView: View {
         GeometryReader { render in
             ZStack {
                 VStack {
-                    Text("Thank you.")
+                    Text(viewModel.thankYouMessage)
                         .multilineTextAlignment(.center)
                         .padding([.leading, .trailing], 8)
                     
@@ -28,7 +28,7 @@ struct SendSurveyView: View {
                                 Image("send_green")
                                     .resizable()
                                     .frame(width: 28,height: 28)
-                                Text("Submit survey")
+                                Text(viewModel.submitButtonLabel)
                             }
                             .frame(width: render.size.width, height: UICommon.buttonHeight)
                             .background {
@@ -77,8 +77,16 @@ struct SendSurveyView: View {
     }
 }
 
+//struct SendSurveyView_Previews: PreviewProvider {
+//    static var previews: some View {
+//        SendSurveyView()
+//    }
+//}
 struct SendSurveyView_Previews: PreviewProvider {
     static var previews: some View {
-        SendSurveyView()
+        let model = WatchSurveyViewModel()
+        model.thankYouMessage = "This is a custom thank-you message indicating that the JSON configuration has taken effect.！"
+        model.submitButtonLabel = "custom submit"
+        return SendSurveyView().environmentObject(model)
     }
 }

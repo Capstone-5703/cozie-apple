@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23231" systemVersion="23H222" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="24902" systemVersion="25G83" minimumToolsVersion="Automatic" sourceLanguage="Swift" userDefinedModelVersionIdentifier="">
     <entity name="BackendInfo" representedClassName=".BackendInfo" syncable="YES">
         <attribute name="api_read_key" optional="YES" attributeType="String"/>
         <attribute name="api_read_url" optional="YES" attributeType="String"/>
@@ -67,8 +67,10 @@
         <attribute name="external" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="firstQuestionID" optional="YES" attributeType="String"/>
         <attribute name="selected" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="submitButtonLabel" optional="YES" attributeType="String"/>
         <attribute name="surveyID" optional="YES" attributeType="String"/>
         <attribute name="surveyName" optional="YES" attributeType="String"/>
+        <attribute name="thankYouMessage" optional="YES" attributeType="String"/>
         <relationship name="survey" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="SurveyData" inverseName="watchSurvey" inverseEntity="SurveyData"/>
     </entity>
 </model>
