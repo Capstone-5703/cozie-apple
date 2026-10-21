@@ -34,6 +34,8 @@ class WatchSurveyViewModel: NSObject, ObservableObject {
     private let session = WCSession.default
     private let storage = StorageManager.shared
     private let locationManager: UpdateLocationProtocol = LocationManager()
+    private let prefetchedLocationMaxAge: TimeInterval = 60
+    private let prefetchedLocationMaxAccuracy: Double = 100
     private let watchSurveyInteractor = WatchSurveyInteractor()
     
     private var selectedOptions: [(sID: String, option: ResponseOption)] = []
@@ -89,6 +91,8 @@ class WatchSurveyViewModel: NSObject, ObservableObject {
             state = .synced
             startTime = Date()
             syncSurvey()
+            
+            prefetchLocation()
             
             cacheHealthState.send(.inprogress)
             watchSurveyInteractor.healthDataPreload(trigger: CommunicationKeys.syncWatchSurveyTrigger.rawValue) { [weak self] models in
@@ -220,35 +224,46 @@ class WatchSurveyViewModel: NSObject, ObservableObject {
         }
     }
     
+    func prefetchLocation() {
+        locationManager.updateLocation { }
+    }
+
+    // The location request is started when the survey is prepared (prefetchLocation()),
+    // so it can complete while the participant is answering.
+    // On submit:
+    // - If "wait for accurate location" is OFF, submit immediately with the current location.
+    // - If a prefetched location is fresh (< 60s) and accurate (<= 100m), use it immediately.
+    // - Otherwise, request a new location and wait up to the configured timeout,
+    //   then fall back to the best available location so submission is never blocked.
     func sendWatchSurvey() {
         sendSurveyProgress = true
         
-        // If the client has configured the app to not wait for an accurate
-        // location, submit right away using whatever location is already
-        // available, skipping the wait-and-timeout logic below entirely.
-        guard storage.waitForAccurateLocation() else {
-            sendSurvey()
-            return
-        }
-        
-        // Request a fresh location right before sending, so the location
-        // attached to this response reflects where the participant is now
-        // rather than a stale location left over from an earlier request.
-        // If CoreLocation doesn't respond within the timeout (e.g. weak
-        // signal), fall back to whatever location is already available so
-        // submission is never blocked. The timeout duration is configurable
-        // via the "Advanced" settings tab (default 5s).
         var didProceed = false
         let proceed: () -> Void = { [weak self] in
             guard !didProceed else { return }
             didProceed = true
             self?.sendSurvey()
         }
+
+        // Setting OFF: don't wait for a new location, submit with what is available
+        if !storage.waitForAccurateLocation() {
+            proceed()
+            return
+        }
+
+        if let location = locationManager.currentLocation,
+           Date().timeIntervalSince(location.timestamp) < prefetchedLocationMaxAge,
+           location.horizontalAccuracy >= 0,
+           location.horizontalAccuracy <= prefetchedLocationMaxAccuracy {
+            proceed()
+            return
+        }
         
+      
         locationManager.updateLocation {
             proceed()
         }
-        
+
         DispatchQueue.main.asyncAfter(deadline: .now() + storage.locationTimeout()) {
             proceed()
         }
