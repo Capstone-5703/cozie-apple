@@ -117,4 +117,27 @@ struct HealthKitInteractorTests {
 
         #expect(!key.lowercased().contains("aaaaaa"))
     }
+    
+    @Test("Apple Watches without localIdentifier are separated by data source")
+    func missingLocalIdentifierFallsBackToSourceId() {
+        // On real devices, Apple Watch samples have no localIdentifier and model is just "Watch",
+        // so the data source's bundleIdentifier is used to tell watches apart.
+        let watch = HKDevice(name: "Apple Watch",
+                             manufacturer: "Apple Inc.",
+                             model: "Watch",
+                             hardwareVersion: nil,
+                             firmwareVersion: nil,
+                             softwareVersion: nil,
+                             localIdentifier: nil,
+                             udiDeviceIdentifier: nil)
+
+        let key1 = HealthKitInteractor.addPrefixForDataKey(key: "steps", device: watch, dataPrefix: "ts", sourceId: "com.apple.health.AAAA1111")
+        let key1Again = HealthKitInteractor.addPrefixForDataKey(key: "steps", device: watch, dataPrefix: "ts", sourceId: "com.apple.health.AAAA1111")
+        let key2 = HealthKitInteractor.addPrefixForDataKey(key: "steps", device: watch, dataPrefix: "ts", sourceId: "com.apple.health.BBBB2222")
+
+        #expect(key1 != key2)
+        #expect(key1 == key1Again)
+        #expect(!key1.hasSuffix("_"))
+        #expect(!key1.lowercased().contains("aaaa1111"))
+    }
 }
